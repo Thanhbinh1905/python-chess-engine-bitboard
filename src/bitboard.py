@@ -1,3 +1,5 @@
+from turtledemo.chaos import jumpto
+
 import numpy as np
 class ChessEngine:
     FILE_A = 0x0101010101010101
@@ -22,6 +24,7 @@ class ChessEngine:
         self.reset_board()
 
         self.is_white_turn: bool = True #1: white, 0: Black
+        self.en_passant = None
 
     def reset_board(self):
         # Thiết lập vị trí ban đầu cho tất cả quân cờ
@@ -155,9 +158,11 @@ class ChessEngine:
         """Cập nhật vị trí quân tốt."""
         if is_white:
             self.WHITE_PAWNS = self.clear_bit(self.WHITE_PAWNS, from_square)
+            self.WHITE_PAWNS = self.clear_bit(self.WHITE_PAWNS, to_square)
             self.WHITE_PAWNS = self.set_bit(self.WHITE_PAWNS, to_square)
         else:
             self.BLACK_PAWNS = self.clear_bit(self.BLACK_PAWNS, from_square)
+            self.BLACK_PAWNS = self.clear_bit(self.BLACK_PAWNS, to_square)
             self.BLACK_PAWNS = self.set_bit(self.BLACK_PAWNS, to_square)
 
     def update_bishop_position(self, is_white: bool, from_square: int, to_square: int):
@@ -368,9 +373,68 @@ class ChessEngine:
 
         return valid_moves
 
+    def get_pawn_moves(self, is_white: bool, from_square: int) -> list:
+        """
+           Di chuyển quân Tốt từ `from_square` đến `to_square` nếu hợp lệ.
+           :param is_white: True nếu là quân trắng, False nếu là quân đen.
+           :param from_square: Vị trí bắt đầu (0-63).
+           :return: Danh sách các nước đi hợp lệ.
+        """
+        valid_moves = []
+        pawns = self.get_white_pawns() if is_white else self.get_black_pawns()
+        owns_pieces = self.get_white_pieces() if is_white else self.get_black_pieces()
+        opponent_pieces = self.get_black_pieces() if is_white else self.get_white_pieces()
+
+        if not self.get_bit(pawns, from_square):
+            return valid_moves
+
+        direction = 8 if is_white else -8
+
+        # Di chuyển 1 ô về phía trước
+        square_ahead = from_square + direction
+        if 0 <= square_ahead < 64 and not (
+                self.get_bit(owns_pieces, square_ahead) or self.get_bit(opponent_pieces, square_ahead)):
+            valid_moves.append(square_ahead)
+
+            # Di chuyển 2 ô nếu chưa di chuyển
+            double_jump = from_square + 2 * direction
+            if 0 <= double_jump < 64 and not (
+                    self.get_bit(owns_pieces, double_jump) or self.get_bit(opponent_pieces, double_jump)):
+                start_rank = 1 if is_white else 6
+                if from_square // 8 == start_rank:
+                    self.en_passant = double_jump  # Lưu vị trí En Passant có thể thực hiện
+                    valid_moves.append(double_jump)
+
+        # Diagonal captures (tấn công chéo)
+        captures = [7, 9] if is_white else [-7, -9]
+        from_file = from_square % 8  # Cột của quân Tốt
+        for capture in captures:
+            capture_square = from_square + capture
+            to_file = capture_square % 8  # Cột của ô mà quân Tốt có thể bắt
+            if self.get_bit(opponent_pieces, capture_square) and 0 <= capture_square < 64 and abs(
+                    from_file - to_file) == 1:
+                valid_moves.append(capture_square)
+
+        # En Passant
+        if self.en_passant is not None:
+            if self.en_passant == from_square + 1 or self.en_passant == from_square - 1:
+                ep_capture = self.en_passant - 8 if is_white else self.en_passant + 8
+                if 0 <= ep_capture < 64:
+                    valid_moves.append(ep_capture)  # Thêm nước đi En Passant
+                    self.en_passant = None  # Xóa En Passant sau khi thực hiện
+
+        return valid_moves
+
+
 def display_knight_moves(board: ChessEngine, is_white: bool, from_square: int):
     """Hiển thị các nước đi khả dụng cho quân mã."""
     moves = board.get_knight_moves(is_white, from_square)
+    print(f"Các nước đi khả dụng cho {'trắng' if is_white else 'đen'} tại ô {from_square}:")
+    for move in moves:
+        print(f"Ô {move} (Tọa độ: {chr(move % 8 + ord('a'))}{move // 8 + 1})")
+def display_pawn_moves(board: ChessEngine, is_white: bool, from_square: int):
+    """Hiển thị các nước đi khả dụng cho quân mã."""
+    moves = board.get_pawn_moves(is_white, from_square)
     print(f"Các nước đi khả dụng cho {'trắng' if is_white else 'đen'} tại ô {from_square}:")
     for move in moves:
         print(f"Ô {move} (Tọa độ: {chr(move % 8 + ord('a'))}{move // 8 + 1})")
@@ -378,8 +442,11 @@ def display_knight_moves(board: ChessEngine, is_white: bool, from_square: int):
 if __name__ == "__main__":
     board = ChessEngine()
     print(board.move_knights(True, 6, 21))
+    print(board.move_knights(True, 21, 36))
+    print(board.move_knights(True, 36, 51))
     # print(board.move_knights(False, 57, 47))
     print(board.print_position())
     
     # Hiển thị các nước đi khả dụng cho quân mã tại ô 1
-    display_knight_moves(board, True, 21)  # Thay đổi True thành False để kiểm tra cho quân mã đen
+    display_knight_moves(board, True, 36)  # Thay đổi True thành False để kiểm tra cho quân mã đen
+    # display_pawn_moves(board, False, 49)  # Thay đổi True thành False để kiểm tra cho quân mã đen
